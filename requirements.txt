@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+httpx
+numpy
+scipy
+pillow
+pillow-heif
+astropy
+scikit-image
+torch
+torchvision
+h5py

@@ -1,0 +1,19 @@
+# --- secrets: NEVER commit the real config (it carries the nova API key) ---
+config.json
+
+# --- bulk data: re-downloadable, see README "Data setup" ---
+data/
+astap/
+
+# --- local environment ---
+.venv/
+__pycache__/
+*.pyc
+*.part
+
+# --- personal analysis history lives under data/jobs (covered above) ---
+
+# --- internal working files ---
+*.zip
+.claude/
+FIZIBILITE-RAPORU.md

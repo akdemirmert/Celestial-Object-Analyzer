@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Celestial Object Analyzer</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><defs><radialGradient id='g'><stop offset='0.29' stop-color='%2304070d'/><stop offset='0.33' stop-color='%23ffe9c9' stop-opacity='0.95'/><stop offset='0.4' stop-color='%23ff9d3c' stop-opacity='0.35'/><stop offset='0.62' stop-color='%235ba8ff' stop-opacity='0.14'/><stop offset='1' stop-color='%235ba8ff' stop-opacity='0'/></radialGradient><linearGradient id='d' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='%237cc4ff'/><stop offset='0.28' stop-color='%23ffe0ab'/><stop offset='0.55' stop-color='%23ffb45c'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><path d='M 8 64 A 52 8 0 0 1 112 64' fill='none' stroke='url(%23d)' stroke-width='5' stroke-linecap='round' opacity='0.75'/><path d='M 33 66 A 27 29 0 0 1 87 66' fill='none' stroke='url(%23d)' stroke-width='5.5' stroke-linecap='round' opacity='0.95'/><circle cx='60' cy='64' r='41' fill='url(%23g)'/><circle cx='60' cy='64' r='19' fill='%2304070d'/><circle cx='60' cy='64' r='20' fill='none' stroke='%23ffe9c9' stroke-width='2' opacity='0.9'/><path d='M 8 64 A 52 8 0 0 0 112 64' fill='none' stroke='url(%23d)' stroke-width='6.5' stroke-linecap='round'/></svg>">
+</head>
+<body>
+<div class="stars-bg"></div>
+
+<nav class="topbar">
+  <!-- brand = a real link: clicking it opens a FRESH analysis in a NEW tab
+       (like middle-clicking a link); the current analysis stays untouched -->
+  <a class="brand" href="/" target="_blank" rel="noopener"
+     title="Open a fresh analyzer in a new tab">
+    <span class="brand-mark" id="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 120 120" class="blackhole-mark">
+        <defs>
+          <radialGradient id="nav-halo" cx="50%" cy="50%">
+            <stop offset="29%" stop-color="#04070d" stop-opacity="1"/>
+            <stop offset="33%" stop-color="#ffe9c9" stop-opacity="0.95"/>
+            <stop offset="40%" stop-color="#ff9d3c" stop-opacity="0.35"/>
+            <stop offset="62%" stop-color="#5ba8ff" stop-opacity="0.14"/>
+            <stop offset="100%" stop-color="#5ba8ff" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="nav-disk" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#7cc4ff"/>
+            <stop offset="28%" stop-color="#ffe0ab"/>
+            <stop offset="55%" stop-color="#ffb45c"/>
+            <stop offset="100%" stop-color="#a78bfa"/>
+          </linearGradient>
+        </defs>
+        <path d="M 8 64 A 52 8 0 0 1 112 64" fill="none"
+              stroke="url(#nav-disk)" stroke-width="4" stroke-linecap="round"
+              opacity="0.75"/>
+        <path d="M 33 66 A 27 29 0 0 1 87 66" fill="none"
+              stroke="url(#nav-disk)" stroke-width="4.5" stroke-linecap="round"
+              opacity="0.95"/>
+        <circle cx="60" cy="64" r="41" fill="url(#nav-halo)"/>
+        <circle cx="60" cy="64" r="19" fill="#04070d"/>
+        <circle cx="60" cy="64" r="20" fill="none" stroke="#ffe9c9"
+                stroke-width="1.5" opacity="0.9"/>
+        <path d="M 8 64 A 52 8 0 0 0 112 64" fill="none"
+              stroke="url(#nav-disk)" stroke-width="5.5" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <div>
+      <div class="brand-name">Celestial Object Analyzer</div>
+      <div class="brand-sub">Astrometric identification &amp; probabilistic analysis</div>
+    </div>
+  </a>
+  <div class="topbar-right">
+    <span id="chip-astrometry" class="chip">astrometry: …</span>
+    <span id="chip-ngc" class="chip">catalog: …</span>
+    <button id="nav-home" class="link-btn">Analysis</button>
+    <button id="nav-methodology" class="link-btn">Methodology</button>
+    <button id="nav-new" class="btn small hidden">+ New analysis</button>
+  </div>
+</nav>
+
+<main>
+  <!-- ======================= upload hero ======================= -->
+  <section id="upload-section">
+    <div class="hero-copy">
+      <h1>What did you photograph in the sky?</h1>
+      <p>Upload any image of a celestial object — any camera, any quality. Known objects are
+      identified <em>exactly</em> by matching star patterns against all-sky catalogs and
+      planetary ephemerides. When identification is impossible, you get an honest,
+      measurement-linked scientific analysis instead of a guess.</p>
+    </div>
+    <div id="dropzone" class="dropzone">
+      <input type="file" id="file-input" accept="image/*,.heic,.heif" hidden>
+      <div class="dz-inner">
+        <div class="dz-icon" aria-hidden="true">
+          <svg viewBox="0 0 120 120" class="blackhole">
+            <defs>
+              <radialGradient id="bh-halo" cx="50%" cy="50%">
+                <stop offset="29%" stop-color="#04070d" stop-opacity="1"/>
+                <stop offset="33%" stop-color="#ffe9c9" stop-opacity="0.95"/>
+                <stop offset="40%" stop-color="#ff9d3c" stop-opacity="0.35"/>
+                <stop offset="62%" stop-color="#5ba8ff" stop-opacity="0.14"/>
+                <stop offset="100%" stop-color="#5ba8ff" stop-opacity="0"/>
+              </radialGradient>
+              <linearGradient id="bh-disk" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#7cc4ff"/>
+                <stop offset="28%" stop-color="#ffe0ab"/>
+                <stop offset="55%" stop-color="#ffb45c"/>
+                <stop offset="100%" stop-color="#a78bfa"/>
+              </linearGradient>
+            </defs>
+            <!-- accretion disk seen nearly edge-on: far half (runs behind) -->
+            <path d="M 8 64 A 52 8 0 0 1 112 64" fill="none"
+                  stroke="url(#bh-disk)" stroke-width="4" stroke-linecap="round"
+                  opacity="0.75"/>
+            <!-- the lensed far side: light bent up and over the event horizon -->
+            <path d="M 33 66 A 27 29 0 0 1 87 66" fill="none"
+                  stroke="url(#bh-disk)" stroke-width="4.5" stroke-linecap="round"
+                  opacity="0.95"/>
+            <!-- glow -->
+            <circle cx="60" cy="64" r="41" fill="url(#bh-halo)"/>
+            <!-- event horizon + photon ring -->
+            <circle cx="60" cy="64" r="19" fill="#04070d"/>
+            <circle cx="60" cy="64" r="20" fill="none" stroke="#ffe9c9"
+                    stroke-width="1.5" opacity="0.9"/>
+            <!-- near half of the disk, sweeping in front of the hole -->
+            <path d="M 8 64 A 52 8 0 0 0 112 64" fill="none"
+                  stroke="url(#bh-disk)" stroke-width="5.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <p class="dz-title">Drop an image here or click to browse</p>
+        <p class="dz-sub">JPEG · PNG · HEIC (iPhone) · WebP — original files preserve EXIF
+        time &amp; GPS, which enables exact planet identification</p>
+        <p class="dz-staged hidden" id="dz-staged">Selected:
+          <strong id="dz-staged-name"></strong> — add an optional position hint below,
+          then press <em>Start analysis</em>.</p>
+      </div>
+    </div>
+    <div class="hint-panel" id="hint-panel">
+      <div class="hint-row">
+        <label for="hint-input">Sky position hint <span class="hint-opt">(optional — helps sparse
+        phone shots)</span></label>
+        <input type="text" id="hint-input"
+               placeholder="e.g. Orion · Vega · Big Dipper · M31 · 83.8 -5.4"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="hint-row">
+        <label for="hint-fov">Field width</label>
+        <select id="hint-fov">
+          <option value="">Unknown</option>
+          <option value="70">Phone, wide (~70°)</option>
+          <option value="25">Phone, 2-3x zoom (~25°)</option>
+          <option value="40">Camera 50 mm (~40°)</option>
+          <option value="10">Telephoto (~10°)</option>
+          <option value="2">Telescope (&lt;3°)</option>
+        </select>
+      </div>
+      <p class="hint-note">Type the constellation or the brightest star you were pointing at —
+      any name a sky-map app shows works. With a hint, solving is attempted even on frames
+      with only 5-7 stars, and if solving still fails you get the list of bright stars that
+      should be at that spot.</p>
+      <button type="button" id="start-btn" class="start-btn hidden">Start analysis →</button>
+    </div>
+    <div class="history-card hidden" id="history-card">
+      <h3 class="history-title">Recent analyses</h3>
+      <div class="history-list" id="history-list"></div>
+    </div>
+  </section>
+
+  <!-- ======================= analysis view ======================= -->
+  <section id="analysis-section" class="hidden">
+    <div class="analysis-grid">
+      <div class="viewer-panel">
+        <div class="viewer-wrap" id="viewer-wrap">
+          <img id="viewer-img" alt="Analyzed image">
+          <canvas id="overlay-canvas"></canvas>
+          <div id="star-tooltip" class="star-tooltip hidden"></div>
+        </div>
+        <div class="viewer-controls" id="viewer-controls">
+          <label class="toggle"><input type="checkbox" id="ov-identified" checked>
+            <span class="swatch sw-gold"></span>Identified <span id="ct-identified" class="ct"></span></label>
+          <label class="toggle"><input type="checkbox" id="ov-stars" checked>
+            <span class="swatch sw-blue"></span>Unidentified <span id="ct-stars" class="ct"></span></label>
+          <label class="toggle"><input type="checkbox" id="ov-faint">
+            <span class="swatch sw-faint"></span>Faint candidates <span id="ct-faint" class="ct"></span></label>
+          <label class="toggle"><input type="checkbox" id="ov-notable" checked>
+            <span class="swatch sw-orange"></span>Notable sources</label>
+          <label class="toggle"><input type="checkbox" id="ov-main" checked>
+            <span class="swatch sw-green"></span>Main source</label>
+          <label class="toggle"><input type="checkbox" id="ov-sources" checked>
+            <span class="swatch sw-cyan"></span>Sources <span id="ct-sources" class="ct"></span></label>
+          <label class="toggle"><input type="checkbox" id="ov-dark" checked>
+            <span class="swatch sw-red"></span>Dark structure</label>
+          <label class="toggle"><input type="checkbox" id="ov-ann" checked>
+            <span class="swatch sw-purple"></span>Annotations</label>
+        </div>
+        <div id="id-status" class="id-status hidden"></div>
+        <p class="viewer-hint" id="viewer-hint">Hover a marked star for details — identified stars open
+        their SIMBAD page on click.</p>
+        <div id="file-label" class="file-label"></div>
+      </div>
+
+      <div class="side-panel">
+        <div id="stage-list" class="stage-list"></div>
+        <div id="verdict-card" class="verdict-card hidden">
+          <span id="mode-badge" class="badge"></span>
+          <h2 id="headline"></h2>
+          <div id="identity-line" class="identity-line"></div>
+          <p id="summary" class="summary"></p>
+        </div>
+        <button id="analyze-another" class="btn ghost hidden">← Analyze another image</button>
+      </div>
+    </div>
+
+    <div id="object-card" class="card object-card hidden"></div>
+
+    <div id="sources-card" class="card hidden">
+      <h3>Detected Sources</h3>
+      <div id="sources-list"></div>
+    </div>
+
+    <!-- ======================= tabs ======================= -->
+    <div id="tabs" class="tabs hidden">
+      <div class="tab-headers">
+        <button class="tab-h active" data-tab="hypotheses">Hypotheses</button>
+        <button class="tab-h" data-tab="observations">Observations</button>
+        <button class="tab-h" data-tab="photometry">Photometry</button>
+        <button class="tab-h" data-tab="sky">Sky Context</button>
+        <button class="tab-h" data-tab="export">Export</button>
+      </div>
+
+      <div class="tab-body" id="tab-hypotheses">
+        <p class="card-note">Consistency scores (0–100) express how well the measurements fit each
+        class — they are <strong>not</strong> calibrated probabilities. Honest uncertainty is part of the method.</p>
+        <div id="hypotheses"></div>
+        <div id="notable-card" class="card hidden">
+          <h3>Notable Individual Sources</h3>
+          <p class="card-note">The brightest point sources besides the main object, each assessed
+          separately. Orange markers in the viewer.</p>
+          <div id="notable-list"></div>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-observations">
+        <div class="two-col">
+          <div class="card">
+            <h3>Measured Observations</h3>
+            <ul id="observations" class="fact-list"></ul>
+          </div>
+          <div class="card caveat-card">
+            <h3>Caveats &amp; Honest Limits</h3>
+            <ul id="caveats" class="fact-list"></ul>
+          </div>
+        </div>
+        <div class="card science-card">
+          <h3>The Science Behind This</h3>
+          <ul id="science-notes" class="fact-list"></ul>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-photometry">
+        <div class="two-col">
+          <div class="card">
+            <h3>Brightness Histogram</h3>
+            <p class="card-note">Distribution of pixel luminance across the frame.</p>
+            <canvas id="chart-histogram" class="chart" width="520" height="260"></canvas>
+          </div>
+          <div class="card">
+            <h3>Radial Light Profile</h3>
+            <p class="card-note">Azimuthally averaged brightness vs. distance from the main
+            source center. Flat top = uniform disk; steep core = point source; gradual slope = galaxy-like.</p>
+            <canvas id="chart-profile" class="chart" width="520" height="260"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Source Color Balance</h3>
+          <div id="color-bars" class="color-bars"></div>
+          <div id="phot-stats" class="phot-stats"></div>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-sky">
+        <div id="sky-cards" class="two-col"></div>
+        <div class="card" id="aladin-card">
+          <h3>Interactive Sky Atlas</h3>
+          <p class="card-note" id="aladin-note">Available when the image is plate-solved (requires internet).</p>
+          <div id="aladin-div"></div>
+        </div>
+        <div id="field-objects-card" class="card hidden">
+          <h3>Cataloged Objects in This Field</h3>
+          <ul id="field-objects" class="fact-list"></ul>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-export">
+        <div class="card">
+          <h3>Export This Analysis</h3>
+          <p class="card-note">Reports are generated locally; nothing is stored on any server.</p>
+          <div class="export-row">
+            <button id="export-html" class="btn">Download report (HTML)</button>
+            <button id="export-json" class="btn ghost">Download raw data (JSON)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="error-card" class="card error-card hidden">
+      <h3>Something went wrong</h3>
+      <p id="error-message"></p>
+      <button id="error-retry" class="btn">Try again</button>
+    </div>
+  </section>
+
+  <!-- ======================= methodology ======================= -->
+  <section id="methodology-section" class="hidden">
+    <button id="methodology-back" class="btn ghost">← Back</button>
+    <h1 class="page-title">Methodology</h1>
+    <div class="card">
+      <h3>1 · Ingest</h3>
+      <p>Images are decoded (JPEG/PNG/HEIC/WebP), EXIF metadata is extracted — capture time, GPS
+      position and optics. EXIF is the single strongest identification signal for solar-system
+      objects: with a timestamp, planetary positions are computed to arcminute accuracy.</p>
+    </div>
+    <div class="card">
+      <h3>2 · Measurement</h3>
+      <p>Sources are segmented above a robust 5σ noise threshold (median/MAD background).
+      For the dominant source we measure: equivalent diameter, elongation and orientation from
+      image moments, circularity, limb sharpness, interior texture, color ratios on unclipped
+      pixels, chromatic-aberration displacement, and a <em>light-concentration index</em> —
+      the physically meaningful discriminator between uniform disks (~0.11), centrally
+      condensed galaxies (&gt;0.22) and stellar point-spread cores (~0.3).</p>
+    </div>
+    <div class="card">
+      <h3>3 · Astrometric identification</h3>
+      <p>If the frame contains a star field, its star pattern is blind-solved via
+      <a href="https://nova.astrometry.net" target="_blank" rel="noopener">astrometry.net</a>
+      (Lang et&nbsp;al. 2010) — geometric hashing of four-star asterisms with Bayesian
+      verification, a method with a near-zero false-positive rate. EXIF focal length provides a
+      field-of-view hint that accelerates solving. The solved position is cross-checked against
+      SIMBAD (CDS Strasbourg), the offline OpenNGC catalog, and JPL-grade planetary ephemerides
+      (astropy) at the EXIF capture time — so a bright disk at Jupiter's computed position is
+      identified <em>as</em> Jupiter, not merely "a planet".</p>
+    </div>
+    <div class="card">
+      <h3>4 · Probabilistic analysis</h3>
+      <p>When astrometry is impossible (no star field — the common case for zoomed or blurry
+      shots), a rule-based hypothesis engine scores each object class against the measurements.
+      Every claim cites its evidence; every report carries explicit caveats. Color-based
+      composition inferences are labeled as analogies (Mars-like iron-oxide reds), never as
+      facts: composition is a spectroscopic question, and the engine says so.</p>
+    </div>
+    <div class="card">
+      <h3>Data sources &amp; credits</h3>
+      <p>astrometry.net · SIMBAD/CDS Strasbourg · OpenNGC (CC-BY-SA) · NASA Image Library ·
+      astropy ephemerides &amp; IAU constellation boundaries. All services are queried live and
+      are free; no user data is stored server-side.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Celestial Object Analyzer v0.2 — astrometric identification has a near-zero false-positive
+  rate; probabilistic analyses are heuristic, evidence-linked and deliberately honest about
+  uncertainty. Nothing replaces spectroscopy.</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

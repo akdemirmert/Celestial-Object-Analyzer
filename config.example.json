@@ -1,0 +1,6 @@
+{
+    "astrometry_api_key": "PASTE-YOUR-FREE-NOVA-ASTROMETRY-NET-KEY-HERE",
+    "astrometry_timeout_s": 180,
+    "max_image_dim": 2400,
+    "port": 8777
+}
