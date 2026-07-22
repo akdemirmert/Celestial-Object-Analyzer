@@ -1327,15 +1327,28 @@ def press_avm_solve(rgb: np.ndarray, obj_name: str,
     names, _, vecs, _ = idx
     q = embed(rgb)
     stem = "PRESS_" + obj_name.replace(" ", "_").replace("*", "s") + "__"
+    # Identity confidence comes from the object's BEST reference (any AVM
+    # quality); the alignment attempt then extends to lower-sim Full-AVM
+    # refs. Rationale (measured on the Crab timelapse composite): the top
+    # match hit 0.942 but carried Position-only AVM, while the Full-AVM
+    # variants sat at 0.85-0.88 - below the old 0.90 gate - yet one of them
+    # pixel-aligned cleanly. The ALIGNMENT is the decisive verification
+    # (lookalike different objects measure <=0.4 NCC vs the 0.55 gate);
+    # embedding sim only needs to establish WHICH object, once.
     cands = []
+    best_sim = 0.0
     for i, n in enumerate(names):
         if n.startswith(stem):
+            s = float(vecs[i] @ q)
+            best_sim = max(best_sim, s)
             entry = avm.get(n)
             if entry and entry.get("quality") == "Full":
-                cands.append((float(vecs[i] @ q), n, entry))
+                cands.append((s, n, entry))
+    if best_sim < 0.90:
+        return None          # identity itself is not confident enough
     cands.sort(key=lambda c: -c[0])
-    for sim, n, entry in cands[:3]:
-        if sim < 0.90:
+    for sim, n, entry in cands[:5]:
+        if sim < 0.80:
             break
         r = _avm_align(rgb, n, entry, full_w, full_h)
         if r:
