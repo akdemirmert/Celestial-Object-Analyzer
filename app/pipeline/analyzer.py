@@ -915,11 +915,24 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
         ((_moon["x"] - _ssrc.get("center_x", 1e9)) ** 2
          + (_moon["y"] - _ssrc.get("center_y", 1e9)) ** 2) ** 0.5
         < _moon["diameter_px"] * 1.5))
+    # no-horizon arm, three physics gates (all measured):
+    # - CORE size, not ext: atmospheric glow inflated a real Moon's ext to
+    #   444 px around a 129 px disk and the old equiv gate rejected it as
+    #   "Gas giant"; the bright core (200 px) is what must match the disk
+    # - sparse sky: a bright-Moon exposure cannot record a deep star field
+    #   (M78's blue nebula core passed every disk test but sat in a
+    #   1,323-source frame; real Moon frames measured 0-627)
+    # - lunar color: the Moon is never blue (M78 rb 0.764 vs Moon 0.9-1.5)
+    _moon_core_ok = bool(_moon and (
+        (_ssrc.get("bright_diameter_px") or _ssrc.get("equiv_diameter_px", 0))
+        < _moon["diameter_px"] * 3))
+    _sky_sparse = (features.get("star_count", 0)
+                   + features.get("faint_star_count", 0)) < 900
+    _lunar_color = (_ssrc.get("rb_color_ratio") or 1.0) >= 0.85
     if (report["mode"] == "probabilistic" and _moon
             and (_hz is not None or _ssrc.get("is_streak")
-                 or (_moon_is_main
-                     and _ssrc.get("equiv_diameter_px", 0)
-                         < _moon["diameter_px"] * 3))):
+                 or (_moon_is_main and _moon_core_ok
+                     and _sky_sparse and _lunar_color))):
         scene = ("over a night landscape (city lights below the horizon)"
                  if _hz is not None else "on the night sky")
         report["headline"] = ("Probabilistic analysis: the Moon "
