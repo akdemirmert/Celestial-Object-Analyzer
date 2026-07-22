@@ -116,6 +116,11 @@ def _extract_exif(img: Image.Image) -> dict:
 
 def load_image(data: bytes, max_dim: int = 2400) -> ImageData:
     """Decode bytes into a normalized RGB array plus EXIF metadata."""
+    # 100 MB uploads can exceed PIL's default decompression-bomb ceiling
+    # (~178 MP) - a legitimate full-res observatory PNG would be REJECTED.
+    # We downscale to max_dim right after decode, so raise the ceiling to
+    # 600 MP instead of disabling the guard entirely.
+    Image.MAX_IMAGE_PIXELS = 600_000_000
     img = Image.open(io.BytesIO(data))
     fmt = img.format or ""
     exif = _extract_exif(img)

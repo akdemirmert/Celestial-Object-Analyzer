@@ -35,7 +35,7 @@ def _warm_up() -> None:
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 @app.middleware("http")
@@ -57,7 +57,7 @@ async def analyze(file: UploadFile = File(...),
     if not data:
         raise HTTPException(400, "Empty upload.")
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "Image larger than 50 MB.")
+        raise HTTPException(413, "Image larger than 100 MB.")
     fov = None
     try:
         fov = float(hint_fov) if hint_fov else None
