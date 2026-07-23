@@ -242,6 +242,13 @@ def _meta_majax(name: str) -> float | None:
     return None
 
 
+def _identity_from_ref(ref: str) -> str:
+    """Reference key -> object name: 'PRESS_Large_Magellanic_Cloud__11'
+    -> 'Large Magellanic Cloud'."""
+    t = re.sub(r"^PRESS_", "", (ref or "").strip())
+    return re.sub(r"__\d+$", "", t).replace("_", " ").strip()
+
+
 def _resolve_user_hint(text: str) -> dict | None:
     """User position hint -> {'ra','dec','label','radius_deg'} or None.
 
@@ -618,6 +625,8 @@ def _run_pipeline(job_id: str, data: bytes,
                 if ps:
                     solve = platesolve.PlateSolveResult(
                         solved=True, skipped=False, solver="visual-pattern", **ps)
+                    solve["identity_name"] = _identity_from_ref(
+                        ps["matched_reference"])
                     _set_stage(job_id, "platesolve", "done",
                                f"Located by pattern-locking onto the reference field of "
                                f"{ps['matched_reference']} ({ps['pattern_inliers']} matched "
@@ -645,6 +654,7 @@ def _run_pipeline(job_id: str, data: bytes,
                             solve = platesolve.PlateSolveResult(
                                 solved=True, skipped=False,
                                 solver="press-avm", **pa)
+                            solve["identity_name"] = _top["name"]
                             _set_stage(
                                 job_id, "platesolve", "done",
                                 f"Located via the publisher's own astrometry "
@@ -707,6 +717,7 @@ def _run_pipeline(job_id: str, data: bytes,
                             solve = platesolve.PlateSolveResult(
                                 solved=True, skipped=False,
                                 solver="visual-id+rotation", **ids)
+                            solve["identity_name"] = top["name"]
                             _set_stage(job_id, "platesolve", "done",
                                        f"Located via the {top['name']} identification "
                                        f"({ids['id_matches']} Gaia stars aligned at "
@@ -897,6 +908,28 @@ def _run_pipeline(job_id: str, data: bytes,
                 except Exception:
                     pass
             named = [m for m in matches if m.get("name")]
+
+            # visually-established identity (press-avm / pattern lock /
+            # id+rotation): the object we ALIGNED onto must appear in the
+            # field list even when its cataloged center falls outside the
+            # small cone - a frame inside the LMC never saw 'NAME LMC' in
+            # its 0.06-deg search (center 0.17 deg away, and no M/NGC/IC
+            # designation for the famous-extended pass), so the analyzer
+            # crowned a random double star instead of the galaxy itself.
+            _idn = solve.get("identity_name")
+            if _idn:
+                def _nrm(s):
+                    return re.sub(r"\s+", "", (s or "").lower())
+                if _nrm(_idn) not in {_nrm(m.get("name")) for m in matches}:
+                    try:
+                        _io = catalogs.object_by_name(
+                            _idn, solve["ra"], solve["dec"])
+                    except Exception:
+                        _io = None
+                    if _io and _nrm(_io["name"]) not in {
+                            _nrm(m.get("name")) for m in matches}:
+                        matches.insert(0, _io)
+                        named = [m for m in matches if m.get("name")]
 
             # per-star identification: WCS maps each detected star to RA/Dec,
             # one batched SIMBAD query names the cataloged ones (hover/click UI)

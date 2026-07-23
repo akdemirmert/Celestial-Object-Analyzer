@@ -140,32 +140,67 @@ def cone_search(ra: float, dec: float, radius_deg: float) -> list[dict]:
         return (-size, dist_penalty)
 
     rows.sort(key=notability)
+    return [_entry_from_row(row) for row in rows]
+
+
+def _entry_from_row(row: dict) -> dict:
     from .starid import _pretty_star_name
-    results = []
-    for row in rows:
-        otype = (row.get("otype") or "").strip()
-        label, note = describe_otype(otype)
-        entry = {
-            "name": _pretty_star_name(row.get("main_id", "")),
-            "otype": otype,
-            "type_label": label,
-            "type_note": note,
-            "ra": row.get("ra"),
-            "dec": row.get("dec"),
-            "angular_size_arcmin": row.get("galdim_majaxis"),
-            "spectral_type": (row.get("sp_type") or "").strip() or None,
-            "center_distance_deg": round(row.get("center_dist") or 0.0, 4),
-        }
-        plx = row.get("plx_value")
-        if plx and plx > 0:
-            entry["distance_ly"] = round(3261.6 / plx, 1)  # mas -> light-years
-        z = row.get("rvz_redshift")
-        if z and z > 0.001:
-            # rough comoving-free estimate: d ~ z * c / H0 (fine for z << 1)
-            entry["distance_mly"] = round(z * 299792.458 / 70.0 * 3.2616, 1)
-            entry["redshift"] = z
-        results.append(entry)
-    return results
+    otype = (row.get("otype") or "").strip()
+    label, note = describe_otype(otype)
+    main_id = row.get("main_id", "")
+    if main_id.startswith("NAME "):
+        main_id = main_id[5:]
+    entry = {
+        "name": _pretty_star_name(main_id),
+        "otype": otype,
+        "type_label": label,
+        "type_note": note,
+        "ra": row.get("ra"),
+        "dec": row.get("dec"),
+        "angular_size_arcmin": row.get("galdim_majaxis"),
+        "spectral_type": (row.get("sp_type") or "").strip() or None,
+        "center_distance_deg": round(row.get("center_dist") or 0.0, 4),
+    }
+    plx = row.get("plx_value")
+    if plx and plx > 0:
+        entry["distance_ly"] = round(3261.6 / plx, 1)  # mas -> light-years
+    z = row.get("rvz_redshift")
+    if z and z > 0.001:
+        # rough comoving-free estimate: d ~ z * c / H0 (fine for z << 1)
+        entry["distance_mly"] = round(z * 299792.458 / 70.0 * 3.2616, 1)
+        entry["redshift"] = z
+    return entry
+
+
+def object_by_name(name: str, ra0: float, dec0: float) -> dict | None:
+    """Resolve ONE known object by identifier into the cone_search entry
+    shape. Needed to inject a visually-established identity into the field
+    list: a frame INSIDE the LMC never sees 'NAME LMC' in its small solved
+    cone (the object's cataloged center is outside the cone, and it carries
+    no M/NGC/IC designation for the famous-extended pass)."""
+    import re as _re
+    t = (name or "").strip()
+    if not t:
+        return None
+    cands = {t, f"NAME {t}"}
+    m = _re.match(r"^([A-Za-z]+)\s*(\d+)$", t)
+    if m:
+        cands.add(f"{m.group(1).upper()} {m.group(2)}")
+        cands.add(f"{m.group(1).upper()}{m.group(2)}")
+    ids = ", ".join("'" + c.replace("'", "''") + "'" for c in cands)
+    try:
+        rows = _tap_query(f"""
+            SELECT TOP 1 b.main_id AS main_id, b.otype AS otype, b.ra AS ra,
+                   b.dec AS dec, b.galdim_majaxis AS galdim_majaxis,
+                   b.plx_value AS plx_value, b.rvz_redshift AS rvz_redshift,
+                   b.sp_type AS sp_type,
+                   DISTANCE(POINT('ICRS', b.ra, b.dec),
+                            POINT('ICRS', {ra0:.6f}, {dec0:.6f})) AS center_dist
+            FROM basic b JOIN ident i ON i.oidref = b.oid
+            WHERE i.id IN ({ids}) AND b.ra IS NOT NULL AND b.dec IS NOT NULL""")
+    except (httpx.HTTPError, ValueError, KeyError):
+        return None
+    return _entry_from_row(rows[0]) if rows else None
 
 
 def estimate_physical_size(angular_size_arcmin: float | None,

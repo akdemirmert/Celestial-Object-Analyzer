@@ -602,6 +602,26 @@ def _classify(features: dict, sky: dict) -> list[dict]:
 
 def _star_field_hypotheses(features: dict) -> list[dict]:
     stars = features["star_count"]
+    # frame-filling nebula guard: when the frame IS one connected sheet of
+    # bright, color-saturated emission, "star field" is measurably wrong -
+    # star fields are points on dark sky (<0.06 on both metrics), while a
+    # narrowband NGC 3576 close-up measured 0.71 / 0.94 and still fell here
+    # because no single main source could be segmented out of it.
+    ecf = features.get("emission_colorful_fraction") or 0.0
+    big = features.get("biggest_bright_component") or 0.0
+    if ecf > 0.30 and big > 0.50:
+        return [_hyp(
+            "Emission nebula / star-forming region (frame-filling close-up)", 85,
+            [f"{ecf * 100:.0f}% of the frame is bright, color-saturated emission "
+             f"and one connected structure spans {big * 100:.0f}% of the image - "
+             "a star field is point sources on a dark background, never this",
+             f"{stars} embedded point sources detected within the nebulosity"],
+            ["Without a plate-solved position the specific nebula cannot be named"],
+        ), _hyp(
+            "Star field", 15,
+            ["Many point sources present, but the dominant signal is the "
+             "extended emission, not the stars"],
+        )]
     hyps = [_hyp(
         "Star field", 75 if stars >= 50 else 55,
         [f"{stars} point sources detected across the frame with no single dominant object"],
@@ -1556,7 +1576,13 @@ def _analyze_core(features: dict, solve: dict, catalog_matches: list[dict],
     if src is None or (features["star_count"] >= 30 and src["fill_fraction"] < 0.002
                        and not src.get("frame_filling")):
         report["hypotheses"] = _star_field_hypotheses(features)
-        report["headline"] = "Probabilistic analysis: star field"
+        # headline follows the TOP hypothesis: the frame-filling-nebula guard
+        # can outrank "star field" here, and the headline must not contradict
+        # the 85-scored hypothesis directly beneath it
+        _top_h = report["hypotheses"][0]["label"]
+        report["headline"] = (
+            "Probabilistic analysis: star field" if _top_h == "Star field"
+            else f"Probabilistic analysis: most consistent with {_top_h}")
         # the dominant point source deserves its own assessment (e.g. a big
         # orange star standing out of the field) - it IS the "main source"
         # here, so the notable-source list would otherwise skip it

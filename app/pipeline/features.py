@@ -1109,7 +1109,22 @@ def extract_features(rgb: np.ndarray, hi_rgb: np.ndarray | None = None) -> dict:
     plausibility = _sky_plausibility(median_lum, dark_fraction, vivid_fraction,
                                      pure_color_fraction)
 
+    # frame-filling emission: a narrowband nebula close-up covers the frame
+    # with bright, color-saturated, CONNECTED structure. No star field can -
+    # points on dark sky measure <0.06 on both metrics, while a Hubble-
+    # palette NGC 3576 frame measured 0.71 colorful-bright with one
+    # component spanning 0.94 of the image.
+    emission_colorful_fraction = float(np.mean((maxc > 0.25) & (sat > 0.25)))
+    biggest_bright_component = 0.0
+    if emission_colorful_fraction > 0.05:
+        _lab_e, _n_e = ndimage.label(maxc > 0.25)
+        if _n_e:
+            biggest_bright_component = float(
+                np.max(np.bincount(_lab_e.ravel())[1:]) / _lab_e.size)
+
     features: dict = {
+        "emission_colorful_fraction": round(emission_colorful_fraction, 4),
+        "biggest_bright_component": round(biggest_bright_component, 4),
         "nightscape_horizon_y": horizon_y,
         "moon_disk": moon,
         **_scene_signatures(lum, bg, sigma, rgb),
