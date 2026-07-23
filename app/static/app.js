@@ -143,10 +143,14 @@ function favSpin(on) {
     if (favLink) favLink.href = favBase;
     return;
   }
+  // time-based angle at ~60fps: butter-smooth in the foreground, and when
+  // the browser throttles a background tab the icon still lands on the
+  // CORRECT elapsed angle instead of visibly stepping between frames
+  const t0 = performance.now() - (favAngle / 360) * 2400;
   favTimer = setInterval(() => {
-    favAngle = (favAngle + 24) % 360;
+    favAngle = ((performance.now() - t0) / 2400) * 360 % 360;
     favDraw(favAngle, 0);
-  }, 140);
+  }, 16);
 }
 
 function favFlash() {
