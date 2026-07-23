@@ -94,15 +94,74 @@ $("error-retry").addEventListener("click", resetUI);
 /* black-hole logo: spin while analyzing, single flash when done */
 function logoSpin(on) {
   const m = $("brand-mark");
-  if (!m) return;
-  m.classList.toggle("analyzing", on);
+  if (m) m.classList.toggle("analyzing", on);
+  favSpin(on);
 }
 function logoFlash() {
   const m = $("brand-mark");
-  if (!m) return;
-  m.classList.remove("analyzing");
-  m.classList.add("done-flash");
-  setTimeout(() => m.classList.remove("done-flash"), 1300);
+  if (m) {
+    m.classList.remove("analyzing");
+    m.classList.add("done-flash");
+    setTimeout(() => m.classList.remove("done-flash"), 1300);
+  }
+  favFlash();
+}
+
+/* ---- browser-tab icon mirrors the brand mark: it spins while an analysis
+   runs and flashes bright when the verdict lands, so even a backgrounded
+   tab tells the user what the app is doing ---- */
+const favLink = document.querySelector("link[rel='icon']");
+const favBase = favLink ? favLink.href : "";
+let favTimer = null;
+let favAngle = 0;
+
+function favDraw(angle, glow) {
+  if (!favLink) return;
+  const halo = glow
+    ? `<circle cx='60' cy='64' r='50' fill='none' stroke='#ffe9c9' stroke-width='9' opacity='${(0.9 * glow).toFixed(2)}'/>` +
+      `<circle cx='60' cy='64' r='57' fill='none' stroke='#ffb45c' stroke-width='5' opacity='${(0.55 * glow).toFixed(2)}'/>`
+    : "";
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>` +
+    `<defs><radialGradient id='g'><stop offset='0.29' stop-color='#04070d'/><stop offset='0.33' stop-color='#ffe9c9' stop-opacity='0.95'/><stop offset='0.4' stop-color='#ff9d3c' stop-opacity='0.35'/><stop offset='0.62' stop-color='#5ba8ff' stop-opacity='0.14'/><stop offset='1' stop-color='#5ba8ff' stop-opacity='0'/></radialGradient>` +
+    `<linearGradient id='d' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#7cc4ff'/><stop offset='0.28' stop-color='#ffe0ab'/><stop offset='0.55' stop-color='#ffb45c'/><stop offset='1' stop-color='#a78bfa'/></linearGradient></defs>` +
+    `<g transform='rotate(${angle} 60 64)'>` +
+    `<path d='M 8 64 A 52 8 0 0 1 112 64' fill='none' stroke='url(#d)' stroke-width='5' stroke-linecap='round' opacity='0.75'/>` +
+    `<path d='M 33 66 A 27 29 0 0 1 87 66' fill='none' stroke='url(#d)' stroke-width='5.5' stroke-linecap='round' opacity='0.95'/>` +
+    `<circle cx='60' cy='64' r='41' fill='url(#g)'/>` +
+    `<circle cx='60' cy='64' r='19' fill='#04070d'/>` +
+    `<circle cx='60' cy='64' r='20' fill='none' stroke='#ffe9c9' stroke-width='2' opacity='0.9'/>` +
+    `<path d='M 8 64 A 52 8 0 0 0 112 64' fill='none' stroke='url(#d)' stroke-width='6.5' stroke-linecap='round'/>` +
+    `</g>${halo}</svg>`;
+  favLink.href = "data:image/svg+xml," + encodeURIComponent(svg);
+}
+
+function favSpin(on) {
+  clearInterval(favTimer);
+  favTimer = null;
+  if (!on) {
+    if (favLink) favLink.href = favBase;
+    return;
+  }
+  favTimer = setInterval(() => {
+    favAngle = (favAngle + 24) % 360;
+    favDraw(favAngle, 0);
+  }, 140);
+}
+
+function favFlash() {
+  clearInterval(favTimer);
+  // bright halo that decays over ~1.3s - the tab-icon twin of done-flash
+  const steps = [1, 0.8, 0.6, 0.42, 0.26, 0.12, 0];
+  let i = 0;
+  favTimer = setInterval(() => {
+    favDraw(0, steps[i]);
+    if (++i >= steps.length) {
+      clearInterval(favTimer);
+      favTimer = null;
+      if (favLink) favLink.href = favBase;
+    }
+  }, 190);
 }
 
 function resetUI() {
