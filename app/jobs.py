@@ -664,6 +664,41 @@ def _run_pipeline(job_id: str, data: bytes,
                 except Exception:
                     traceback.print_exc()
 
+            # IDENTITY BY ALIGNMENT: when appearance cannot even pick the
+            # object (tiny survey crops of rogue planets / brown dwarfs all
+            # look alike - the wrong exotic out-scored the right one 0.945
+            # vs 0.867), pixel alignment still can: the true field locks
+            # (NCC 0.72 / 13 pts) while wrong-object references all fail.
+            # Try every plausible Full-AVM candidate; accept only a UNIQUE
+            # aligning object.
+            # SPARSE frames only: a survey crop holds tens of detections, and
+            # scanning many candidates there costs seconds. A deep telescope
+            # frame with thousands of points doesn't need this path (press-avm
+            # already covers it) and would pay the full scan for nothing.
+            if ((solve is None or not solve.solved)
+                    and feats.get("star_count", 0) < 500):
+                try:
+                    from .pipeline import visualmatch as _vma2
+                    _set_stage(job_id, "platesolve", "running",
+                               "Trying pixel alignment against candidate "
+                               "reference fields...")
+                    al = _vma2.align_candidates_solve(
+                        img.rgb, img.width, img.height)
+                    if al:
+                        _al_name = al.pop("identity")
+                        solve = platesolve.PlateSolveResult(
+                            solved=True, skipped=False,
+                            solver="align-lock", **al)
+                        solve["identity_name"] = _al_name
+                        _set_stage(
+                            job_id, "platesolve", "done",
+                            f"Identified {_al_name} by pixel alignment: the "
+                            f"only candidate field that locks "
+                            f"({al['avm_inliers']} aligned points, "
+                            f"correlation {al['avm_ncc']:.2f})")
+                except Exception:
+                    traceback.print_exc()
+
             # IDENTITY -> ASTROMETRY: a decisive visual identification pins
             # position AND scale (known angular size / measured pixel size);
             # the only free parameter left is rotation - sweep it against the
@@ -1183,6 +1218,45 @@ def _run_pipeline(job_id: str, data: bytes,
                                 if report.get("object"):
                                     report["object"]["name"] = (
                                         f"{nm} ({_alt_disp} region)")
+        except Exception:
+            traceback.print_exc()
+
+        # WHOLE-FRAME SUBJECT: when the class analysis says the frame IS one
+        # extended object (a frame-filling nebula/galaxy close-up), the honest
+        # answer to "which object?" changes SHAPE: the subject is the entire
+        # frame, not a compact source inside it. Appearance still cannot NAME
+        # it safely - this Orion X-ray composite's best lookalike measured
+        # Westerlund 2 at 0.865, a wrong name - so no name is claimed: the
+        # report states the frame-as-subject reading, lists the closest famous
+        # fields as unconfirmed resemblances, and points at the hint path.
+        try:
+            _ecf = feats.get("emission_colorful_fraction") or 0.0
+            _bigc = feats.get("biggest_bright_component") or 0.0
+            _ms4 = feats.get("main_source") or {}
+            _filling = (_ecf > 0.30 and _bigc > 0.50) or _ms4.get("frame_filling")
+            _lbl0 = ((report.get("hypotheses") or [{}])[0].get("label") or "").lower()
+            if "star-forming" in _lbl0:
+                _kind = "star-forming nebula"
+            elif "nebula" in _lbl0:
+                _kind = "nebula"
+            elif "galaxy" in _lbl0:
+                _kind = "galaxy"
+            else:
+                _kind = None
+            if (report.get("mode") == "probabilistic"
+                    and report.get("object") is None
+                    and _filling and _kind and vm_matches):
+                report["frame_subject"] = {
+                    "kind": _kind,
+                    "candidates": [
+                        {"name": m["name"],
+                         "similarity": round(float(m["similarity"]), 2)}
+                        for m in vm_matches[:3] if m["similarity"] >= 0.75],
+                }
+                report["summary"] = (report.get("summary") or "") + (
+                    f" Note that the subject here is the WHOLE frame - a "
+                    f"close-up lying inside a {_kind} - not a single compact "
+                    "source within it.")
         except Exception:
             traceback.print_exc()
 

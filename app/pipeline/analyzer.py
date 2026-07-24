@@ -744,18 +744,40 @@ def _source_entries(features: dict) -> list[dict]:
 def analyze(features: dict, solve: dict, catalog_matches: list[dict],
             nasa_image: dict | None, exif: dict, sky: dict | None = None) -> dict:
     """Public entry: core analysis + the multi-source layer on top."""
+    # DEEP-FIELD STREAK VETO, applied before ANY branch reads the flag.
+    # Every streak class (satellite trail, meteor, aircraft, and the streak
+    # arms of the Moon and star-trail branches) assumes a sparse sky holding
+    # one linear artifact. A deep telescope frame breaks that assumption:
+    # dust pillars and nebular filaments measure as elongated blobs. The
+    # Pillars of Creation (7,078 point sources) walked down the chain one
+    # branch at a time - "star trails", then "the Moon", then "satellite
+    # trail" - as each gate was closed on its own. Clearing the flag here
+    # closes all of them at once.
+    _dsrc = features.get("main_source") or {}
+    if ((features.get("star_count", 0)
+         + features.get("faint_star_count", 0)) > 6000
+            and _dsrc.get("is_streak")):
+        _dsrc["is_streak"] = False
+
     report = _analyze_core(features, solve, catalog_matches, nasa_image, exif, sky)
     if report["mode"] == "not_astronomical":
         report["sources"] = []
         return report
+
     entries = _source_entries(features)
     report["sources"] = entries
 
     _ssrc = features.get("main_source") or {}
 
     # ---- star trails: many concentric arcs = Earth's rotation ---------------
+    # point-source veto: Earth's rotation drags EVERY star into an arc, so a
+    # true trail frame keeps almost no point sources (measured: 43 arcs vs
+    # 112 points). A deep telescope frame full of points cannot be a trail -
+    # JWST's diffraction spikes were counted as 12 "arcs" beside 4,328 point
+    # sources and the Pillars of Creation came back as "star trails".
+    _pts = features.get("star_count", 0)
     if (report["mode"] == "probabilistic"
-            and features.get("star_trail_count", 0) >= 8
+            and features.get("star_trail_count", 0) >= max(8, _pts * 0.02)
             and (features.get("star_trail_concentric")
                  or features.get("star_trail_angle_std", 0) > 25)):
         n_arc = features["star_trail_count"]
@@ -949,8 +971,17 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
     _sky_sparse = (features.get("star_count", 0)
                    + features.get("faint_star_count", 0)) < 900
     _lunar_color = (_ssrc.get("rb_color_ratio") or 1.0) >= 0.85
+    # the streak arm needs the sparse-sky gate too: the Pillars of Creation
+    # (7,078 point sources) reached this branch because its dust columns
+    # measured as elongated "streaks", and came back as "the Moon". The
+    # HORIZON arm is exempt - a detected horizon is itself proof of a
+    # ground-based landscape (a real moonscape measured 3,280 points over
+    # its skyline), so it only carries a far ceiling against deep frames.
+    _deep_field = (features.get("star_count", 0)
+                   + features.get("faint_star_count", 0)) > 6000
     if (report["mode"] == "probabilistic" and _moon
-            and (_hz is not None or _ssrc.get("is_streak")
+            and ((_hz is not None and not _deep_field)
+                 or (_ssrc.get("is_streak") and _sky_sparse)
                  or (_moon_is_main and _moon_core_ok
                      and _sky_sparse and _lunar_color))):
         scene = ("over a night landscape (city lights below the horizon)"

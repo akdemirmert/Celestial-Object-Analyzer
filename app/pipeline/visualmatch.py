@@ -1193,8 +1193,27 @@ def _load_avm() -> dict:
     return d
 
 
+def _query_prep(rgb: np.ndarray):
+    """Query side of the alignment (grayscale, 640px downscale, blobs).
+    Independent of the reference, so a candidate SCAN computes it once
+    instead of once per attempt - that repeat cost was 80% of an 8-minute
+    scan over 80 candidate references."""
+    from PIL import Image as _I
+
+    qg_full = np.asarray(_I.fromarray(
+        (np.clip(rgb, 0, 1) * 255).astype("uint8")).convert("L"),
+        dtype=np.float32) / 255.0
+    qh, qw = qg_full.shape
+    q_s = 640.0 / max(qw, qh)
+    qg = np.asarray(_I.fromarray((qg_full * 255).astype("uint8")).resize(
+        (max(int(qw * q_s), 8), max(int(qh * q_s), 8)), _I.LANCZOS),
+        dtype=np.float32) / 255.0
+    qp, _ = _blobs(qg, n=40)
+    return qg, qp
+
+
 def _avm_align(rgb: np.ndarray, ref_name: str, e: dict,
-               full_w: int, full_h: int) -> dict | None:
+               full_w: int, full_h: int, q_cache=None) -> dict | None:
     """Align the query onto a press reference pixel-to-pixel and inherit the
     publisher's AVM WCS. Returns a solve dict or None."""
     import io as _io
@@ -1215,19 +1234,15 @@ def _avm_align(rgb: np.ndarray, ref_name: str, e: dict,
         # full-res frame the AVM describes - aspect mismatch means a crop
         if abs(dim_h / rh - s_full) > 0.02 * s_full:
             return None
-        qg_full = np.asarray(_I.fromarray(
-            (np.clip(rgb, 0, 1) * 255).astype("uint8")).convert("L"),
-            dtype=np.float32) / 255.0
-        qh, qw = qg_full.shape
-        q_s = 640.0 / max(qw, qh)
         r_s = 640.0 / max(rw, rh)
-        qg = np.asarray(_I.fromarray((qg_full * 255).astype("uint8")).resize(
-            (max(int(qw * q_s), 8), max(int(qh * q_s), 8)), _I.LANCZOS),
-            dtype=np.float32) / 255.0
+        # geometry of the query is free from its shape; only the grayscale
+        # downscale + blob extraction are worth caching across candidates
+        qh, qw = rgb.shape[:2]
+        q_s = 640.0 / max(qw, qh)
+        qg, qp = q_cache if q_cache is not None else _query_prep(rgb)
         rg = np.asarray(rimg.resize(
             (max(int(rw * r_s), 8), max(int(rh * r_s), 8)), _I.LANCZOS),
             dtype=np.float32) / 255.0
-        qp, _ = _blobs(qg, n=40)
         rp, _ = _blobs(rg, n=40)
         if len(qp) < 5 or len(rp) < 5:
             return None
@@ -1376,6 +1391,107 @@ def object_support(rgb: np.ndarray, obj_name: str, floor: float = 0.85) -> int:
             if float(vecs[i] @ q) >= floor:
                 n += 1
     return n
+
+
+def _prescreen(qp: np.ndarray, ref_name: str, n: int = 16,
+               min_inliers: int = 4) -> bool:
+    """Fast reject for a candidate reference: fit only the brightest blobs.
+    Cheap enough to run over a long candidate list before paying for the
+    full alignment."""
+    from PIL import Image as _I
+
+    ref_path = INDEX_DIR / "img" / f"{ref_name}.jpg"
+    if not ref_path.exists():
+        return False
+    try:
+        rimg = _I.open(ref_path).convert("L")
+        rw, rh = rimg.size
+        r_s = 640.0 / max(rw, rh)
+        rg = np.asarray(rimg.resize(
+            (max(int(rw * r_s), 8), max(int(rh * r_s), 8)), _I.LANCZOS),
+            dtype=np.float32) / 255.0
+        rp, _ = _blobs(rg, n=n)
+        if len(qp) < 5 or len(rp) < 5:
+            return False
+        fit = _fit_pattern(qp[:n], rp[:n], smin=0.3, smax=3.5)
+        return bool(fit and fit[2] >= min_inliers)
+    except Exception:
+        return False
+
+
+def align_candidates_solve(rgb: np.ndarray, full_w: int,
+                           full_h: int) -> dict | None:
+    """Identity-by-ALIGNMENT for frames whose appearance cannot pick the
+    object. Tiny survey crops (rogue planets, brown dwarfs, finder charts)
+    all look alike to the embedding - the WRONG object can out-score the
+    right one (PSO J318's own field measured 0.867 while a CFBDSIR lookalike
+    hit 0.945). Blob alignment is the separator: the true field locked at
+    NCC 0.72 / 13 inliers while 8 wrong-object references ALL failed to
+    align. So: try to pixel-align every visually plausible Full-AVM
+    candidate and accept ONLY if exactly one distinct object aligns."""
+    avm = _load_avm()
+    if not avm:
+        return None
+    idx = _load_index()
+    if idx is None:
+        return None
+    names, _, vecs, _ = idx
+    q = embed(rgb)
+    sims = vecs @ q
+    by_obj: dict[str, list] = {}
+    for i, n in enumerate(names):
+        if not n.startswith("PRESS_"):
+            continue
+        s = float(sims[i])
+        if s < 0.72:
+            continue
+        e = avm.get(n)
+        if not e or e.get("quality") != "Full":
+            continue
+        disp = (n[6:].rsplit("__", 1)[0].replace("_", " ")
+                .replace("M87s", "M87*")
+                .replace("Sagittarius As", "Sagittarius A*"))
+        by_obj.setdefault(disp, []).append((s, n, e))
+    if not by_obj:
+        return None
+    ranked = sorted(by_obj.items(), key=lambda kv: -max(s for s, _, _ in kv[1]))
+    hits: dict[str, dict] = {}
+    tried = 0
+    # deep the candidate list on purpose: for a tiny survey crop the RIGHT
+    # object ranks low on appearance (PSO J318's own field sat 29th, behind
+    # dozens of unrelated deep-field references). Alignment is what decides,
+    # so it must actually reach the true candidate. Also try several refs
+    # per object - PSO's best-scoring reference failed to align while its
+    # third one locked cleanly.
+    qg_c, qp_c = _query_prep(rgb)
+    q_cache = (qg_c, qp_c)
+    for disp, refs in ranked[:40]:
+        refs.sort(key=lambda t: -t[0])
+        for s, n, e in refs[:3]:
+            if tried >= 80:
+                break
+            tried += 1
+            # CHEAP PRESCREEN first: the full fit is O(points^4) and costs
+            # ~6s per candidate, which made an 80-candidate scan take eight
+            # minutes. On the brightest 16 blobs it costs 0.4s and separates
+            # cleanly anyway - the true field scored 7 inliers where three
+            # wrong-object references all scored 0.
+            if not _prescreen(qp_c, n, min_inliers=4):
+                continue
+            r = _avm_align(rgb, n, e, full_w, full_h, q_cache=q_cache)
+            # tighter than the press-avm gates (0.55/6): identity here rests
+            # on the alignment ALONE, with no similarity gate above it
+            if r and r["avm_ncc"] >= 0.60 and r["avm_inliers"] >= 10:
+                r["avm_similarity"] = round(s, 3)
+                hits[disp] = r
+                break
+        if len(hits) > 1:
+            return None  # two different objects align: ambiguous, refuse
+    if len(hits) != 1:
+        return None
+    disp, r = next(iter(hits.items()))
+    r["identity"] = disp
+    return r
 
 
 def match(rgb: np.ndarray, top_k: int = 3) -> list[dict]:

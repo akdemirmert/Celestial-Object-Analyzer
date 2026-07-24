@@ -876,6 +876,22 @@ function renderIdentityLine(job, report) {
     el.innerHTML = `<span class="id-key">Specific object:</span>
       <a class="obj-link" href="${simbad}" target="_blank" rel="noopener"
          title="Open this object's SIMBAD page"><b>${escapeHtml(obj.name)}</b></a>${obj.type_label ? " — " + escapeHtml(obj.type_label) : ""}`;
+  } else if (report.frame_subject) {
+    // the subject is the ENTIRE frame (a close-up inside a nebula/galaxy):
+    // saying "not determined" here misreads the picture - the class IS
+    // determined, only the proper name is not
+    el.classList.add("undetermined");
+    const fs = report.frame_subject;
+    const cands = (fs.candidates || [])
+      .map((c) => `${escapeHtml(c.name)} (${Math.round(c.similarity * 100)}%)`)
+      .join(", ");
+    el.innerHTML = `<span class="id-key">Specific object:</span>
+      <b>The whole frame is the subject</b> — a close-up lying inside a
+      ${escapeHtml(fs.kind)}. Its exact name can't be claimed safely:
+      it resembles ${cands || "several famous fields"}, but look-alike
+      ${escapeHtml(fs.kind)} fields can't be separated by appearance alone.
+      If you know which object this is, analyze again with its name in the
+      hint box — the star pattern will be verified astrometrically.`;
   } else {
     el.classList.add("undetermined");
     const solved = job.solve && job.solve.solved;
