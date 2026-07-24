@@ -955,20 +955,39 @@ def _run_pipeline(job_id: str, data: bytes,
             if _idn:
                 def _nrm(s):
                     return re.sub(r"\s+", "", (s or "").lower())
-                if _nrm(_idn) not in {_nrm(m.get("name")) for m in matches}:
+
+                def _find(nm):
+                    k = _nrm(nm)
+                    return next((m for m in matches
+                                 if _nrm(m.get("name")) == k), None)
+                # flag it wherever it already sits, otherwise inject it. The
+                # earlier version SKIPPED when the name was already in the
+                # cone and so never set the flag: PSO J318.5-22 resolves to
+                # 2MASS J21140802-2251358, which the cone already listed, and
+                # the headline went to an unrelated Gaia field star instead.
+                _hit = _find(_idn)
+                if _hit is None:
                     try:
                         _io = catalogs.object_by_name(
                             _idn, solve["ra"], solve["dec"])
                     except Exception:
                         _io = None
-                    if _io and _nrm(_io["name"]) not in {
-                            _nrm(m.get("name")) for m in matches}:
-                        # pixel-verified identity: the analyzer crowns this
-                        # entry outright (a point-like exotic has no angular
-                        # size, so the extended-overlap rule can't see it)
-                        _io["identity"] = True
-                        matches.insert(0, _io)
-                        named = [m for m in matches if m.get("name")]
+                    if _io:
+                        _hit = _find(_io["name"])
+                        if _hit is None:
+                            _hit = _io
+                            matches.insert(0, _io)
+                if _hit is not None:
+                    # pixel-verified identity: the analyzer crowns this entry
+                    # outright (a point-like exotic has no angular size, so
+                    # the extended-overlap rule can't see it)
+                    _hit["identity"] = True
+                    # keep the designation people actually search by: SIMBAD's
+                    # main id for PSO J318.5-22 is 2MASS J21140802-2251358,
+                    # which nobody recognizes as the famous rogue planet
+                    if _nrm(_idn) != _nrm(_hit.get("name")):
+                        _hit["name"] = f"{_hit['name']} ({_idn})"
+                    named = [m for m in matches if m.get("name")]
 
             # per-star identification: WCS maps each detected star to RA/Dec,
             # one batched SIMBAD query names the cataloged ones (hover/click UI)
