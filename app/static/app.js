@@ -110,63 +110,107 @@ function logoFlash() {
 /* ---- browser-tab icon mirrors the brand mark: it spins while an analysis
    runs and flashes bright when the verdict lands, so even a backgrounded
    tab tells the user what the app is doing ---- */
-const favLink = document.querySelector("link[rel='icon']");
-const favBase = favLink ? favLink.href : "";
+const favBase = (document.querySelector("link[rel='icon']") || {}).href || "";
 let favTimer = null;
-let favAngle = 0;
+let favFrames = null;      // one full revolution, pre-rendered PNG data URLs
+let favGlowFrames = null;  // decaying halo for the done-flash
+const FAV_N = 48;          // 7.5-degree steps
+const FAV_PERIOD = 2000;   // ms per revolution
 
-function favDraw(angle, glow) {
-  if (!favLink) return;
-  const halo = glow
-    ? `<circle cx='60' cy='64' r='50' fill='none' stroke='#ffe9c9' stroke-width='9' opacity='${(0.9 * glow).toFixed(2)}'/>` +
-      `<circle cx='60' cy='64' r='57' fill='none' stroke='#ffb45c' stroke-width='5' opacity='${(0.55 * glow).toFixed(2)}'/>`
-    : "";
-  const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>` +
-    `<defs><radialGradient id='g'><stop offset='0.29' stop-color='#04070d'/><stop offset='0.33' stop-color='#ffe9c9' stop-opacity='0.95'/><stop offset='0.4' stop-color='#ff9d3c' stop-opacity='0.35'/><stop offset='0.62' stop-color='#5ba8ff' stop-opacity='0.14'/><stop offset='1' stop-color='#5ba8ff' stop-opacity='0'/></radialGradient>` +
-    `<linearGradient id='d' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#7cc4ff'/><stop offset='0.28' stop-color='#ffe0ab'/><stop offset='0.55' stop-color='#ffb45c'/><stop offset='1' stop-color='#a78bfa'/></linearGradient></defs>` +
-    `<g transform='rotate(${angle} 60 64)'>` +
-    `<path d='M 8 64 A 52 8 0 0 1 112 64' fill='none' stroke='url(#d)' stroke-width='5' stroke-linecap='round' opacity='0.75'/>` +
-    `<path d='M 33 66 A 27 29 0 0 1 87 66' fill='none' stroke='url(#d)' stroke-width='5.5' stroke-linecap='round' opacity='0.95'/>` +
-    `<circle cx='60' cy='64' r='41' fill='url(#g)'/>` +
-    `<circle cx='60' cy='64' r='19' fill='#04070d'/>` +
-    `<circle cx='60' cy='64' r='20' fill='none' stroke='#ffe9c9' stroke-width='2' opacity='0.9'/>` +
-    `<path d='M 8 64 A 52 8 0 0 0 112 64' fill='none' stroke='url(#d)' stroke-width='6.5' stroke-linecap='round'/>` +
-    `</g>${halo}</svg>`;
-  favLink.href = "data:image/svg+xml," + encodeURIComponent(svg);
+function favSet(href) {
+  // Chromium repaints the tab strip lazily on plain href changes - swapping
+  // in a FRESH <link> node each frame is the one reliable repaint trigger
+  const old = document.querySelector("link[rel='icon']");
+  const l = document.createElement("link");
+  l.rel = "icon";
+  l.href = href;
+  document.head.appendChild(l);
+  if (old) old.remove();
+}
+
+function favPrerender() {
+  // rasterizing the gradient SVG on EVERY frame is what made the spin
+  // stutter: render each rotation step ONCE into a tiny PNG, then cycling
+  // is just a cached-bitmap swap
+  if (favFrames !== null || !favBase) return;
+  favFrames = [];  // guards against double-start while the image loads
+  const img = new Image();
+  img.onload = () => {
+    const S = 64, cx = S / 2, cy = (64 / 120) * S;  // svg center (60,64)
+    const mk = (angle, glow) => {
+      const c = document.createElement("canvas");
+      c.width = c.height = S;
+      const g = c.getContext("2d");
+      if (glow) {
+        g.shadowColor = "#ffe9c9";
+        g.shadowBlur = 14 * glow;
+      }
+      g.translate(cx, cy);
+      g.rotate((angle * Math.PI) / 180);
+      g.drawImage(img, -cx, -cy, S, S);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      if (glow) {
+        g.globalAlpha = 0.9 * glow;
+        g.strokeStyle = "#ffe9c9";
+        g.lineWidth = 4.5;
+        g.beginPath(); g.arc(cx, cy, 26, 0, 7); g.stroke();
+        g.globalAlpha = 0.5 * glow;
+        g.strokeStyle = "#ffb45c";
+        g.lineWidth = 2.5;
+        g.beginPath(); g.arc(cx, cy, 30, 0, 7); g.stroke();
+        g.globalAlpha = 1;
+      }
+      return c.toDataURL("image/png");
+    };
+    const frames = [];
+    for (let i = 0; i < FAV_N; i++) frames.push(mk((360 / FAV_N) * i, 0));
+    favFrames = frames;
+    favGlowFrames = [1, 0.8, 0.6, 0.42, 0.26, 0.12].map((o) => mk(0, o));
+  };
+  img.src = favBase;
 }
 
 function favSpin(on) {
   clearInterval(favTimer);
   favTimer = null;
   if (!on) {
-    if (favLink) favLink.href = favBase;
+    favSet(favBase);
     return;
   }
-  // time-based angle at ~60fps: butter-smooth in the foreground, and when
-  // the browser throttles a background tab the icon still lands on the
-  // CORRECT elapsed angle instead of visibly stepping between frames
-  const t0 = performance.now() - (favAngle / 360) * 2400;
+  favPrerender();
+  const t0 = performance.now();
+  let last = -1;
   favTimer = setInterval(() => {
-    favAngle = ((performance.now() - t0) / 2400) * 360 % 360;
-    favDraw(favAngle, 0);
+    if (!favFrames || !favFrames.length) return; // frames still rendering
+    const idx = Math.floor(((performance.now() - t0) % FAV_PERIOD)
+                           / FAV_PERIOD * favFrames.length);
+    if (idx !== last) {
+      last = idx;
+      favSet(favFrames[idx]);
+    }
   }, 16);
 }
 
 function favFlash() {
   clearInterval(favTimer);
-  // bright halo that decays over ~1.3s - the tab-icon twin of done-flash
-  const steps = [1, 0.8, 0.6, 0.42, 0.26, 0.12, 0];
+  favTimer = null;
+  if (!favGlowFrames || !favGlowFrames.length) {
+    favSet(favBase);
+    return;
+  }
   let i = 0;
   favTimer = setInterval(() => {
-    favDraw(0, steps[i]);
-    if (++i >= steps.length) {
+    if (i < favGlowFrames.length) {
+      favSet(favGlowFrames[i++]);
+    } else {
       clearInterval(favTimer);
       favTimer = null;
-      if (favLink) favLink.href = favBase;
+      favSet(favBase);
     }
   }, 190);
 }
+
+favPrerender();
 
 function resetUI() {
   clearInterval(pollTimer);

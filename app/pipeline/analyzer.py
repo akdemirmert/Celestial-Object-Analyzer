@@ -1314,8 +1314,16 @@ def _analyze_core(features: dict, solve: dict, catalog_matches: list[dict],
         import math
         extended = [m for m in named if m.get("angular_size_arcmin")]
         primary = None
+        # a visually-established identity (press-avm / pattern lock) is
+        # pixel-verified: it wins outright. Without this, a point-like
+        # exotic (rogue planet, brown dwarf - no angular size) loses the
+        # headline to whatever bright field star sits on the main source.
+        for m in named:
+            if m.get("identity"):
+                primary = m
+                break
         m_ra, m_dec = solve.get("main_source_ra"), solve.get("main_source_dec")
-        if extended and m_ra is not None:
+        if primary is None and extended and m_ra is not None:
             overlapping = []
             for m in extended:
                 cosd = math.cos(math.radians(m_dec))
@@ -1331,7 +1339,7 @@ def _analyze_core(features: dict, solve: dict, catalog_matches: list[dict],
                     key=lambda t: t[0] / max((t[1].get("angular_size_arcmin")
                                               or 1.0), 1.0))
                 primary = overlapping[0][1]
-        elif extended and m_ra is None:
+        elif primary is None and extended and m_ra is None:
             # no dominant-source anchor (e.g. pure DSO frame): fall back to the
             # object nearest the field center among the extended candidates
             extended.sort(key=lambda m: m.get("center_distance_deg") or 99)

@@ -928,6 +928,10 @@ def _run_pipeline(job_id: str, data: bytes,
                         _io = None
                     if _io and _nrm(_io["name"]) not in {
                             _nrm(m.get("name")) for m in matches}:
+                        # pixel-verified identity: the analyzer crowns this
+                        # entry outright (a point-like exotic has no angular
+                        # size, so the extended-overlap rule can't see it)
+                        _io["identity"] = True
                         matches.insert(0, _io)
                         named = [m for m in matches if m.get("name")]
 
