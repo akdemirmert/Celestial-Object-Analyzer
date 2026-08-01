@@ -1211,7 +1211,52 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
                     e["label"] = f"Main source - {top}"
                     e["kind"] = "main"
                     break
+    _rank_hypotheses(report)
     return report
+
+
+# hypotheses that cannot describe the same object at the same time. Key words
+# are matched against the leading hypothesis; the listed rivals are then
+# dropped outright rather than merely demoted.
+_INCOMPATIBLE = [
+    # a lunar disk is not a gas giant: banded ammonia cloud decks are a
+    # Jupiter/Saturn feature, and lunar maria measure as "bands" by accident
+    (("moon",), ("gas giant",)),
+    # ... and the reverse
+    (("gas giant",), ("moon",)),
+]
+
+
+def _rank_hypotheses(report: dict) -> None:
+    """Turn independently-scored class fits into a ranked verdict.
+
+    Each hypothesis is scored on its own merits ("how well does this class
+    match the measurements?"), which is right for the physics but wrong for
+    the reader: a blood Moon at 97 sat beside "gas giant" at 70 and BOTH
+    printed STRONG, as though the frame held four objects at once. The leader
+    now caps its rivals - the more decisive it is, the harder they are capped
+    - and physically impossible rivals are removed entirely.
+    """
+    hyps = report.get("hypotheses") or []
+    if len(hyps) < 2:
+        return
+    hyps = sorted(hyps, key=lambda h: -h.get("score", 0))
+    lead = (hyps[0].get("label") or "").lower()
+    for keys, rivals in _INCOMPATIBLE:
+        if any(k in lead for k in keys):
+            hyps = [hyps[0]] + [h for h in hyps[1:]
+                                if not any(r in (h.get("label") or "").lower()
+                                           for r in rivals)]
+    top = hyps[0].get("score", 0)
+    # a near-certain leader leaves little room for anything else; a weak one
+    # leaves room for a genuine rival (honest ambiguity must survive)
+    ratio = 0.55 if top >= 90 else (0.72 if top >= 75 else 0.88)
+    cap = top * ratio
+    for h in hyps[1:]:
+        if h.get("score", 0) > cap:
+            h["score"] = round(cap)
+            h["band"] = _band(h["score"])
+    report["hypotheses"] = hyps
 
 
 def _analyze_core(features: dict, solve: dict, catalog_matches: list[dict],
