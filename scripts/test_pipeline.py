@@ -35,7 +35,8 @@ def gated_report(path: Path):
         elif p > ml_gate.RESCUE_THRESHOLD and not feats.get("looks_astronomical", True):
             feats["looks_astronomical"] = True
             feats["plausibility_reasons"] = []
-    if img.transparent_fraction > 0.005:
+    if (img.transparent_fraction > 0.005
+            and img.interior_transparent_fraction > 0.005):
         feats["looks_astronomical"] = False
         feats["plausibility_reasons"] = ["transparent background"] + (
             feats.get("plausibility_reasons") or [])

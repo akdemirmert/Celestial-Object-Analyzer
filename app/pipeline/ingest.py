@@ -27,6 +27,9 @@ class ImageData:
     exif: dict = field(default_factory=dict)
     format: str = ""
     transparent_fraction: float = 0.0  # photos never have transparency
+    # transparency INSIDE the frame (edge-only transparency means a mosaic
+    # or an irregular crop, not a cut-out)
+    interior_transparent_fraction: float = 0.0
 
 
 def _rational_to_float(value) -> float:
@@ -132,12 +135,24 @@ def load_image(data: bytes, max_dim: int = 2400) -> ImageData:
     # object on a night sky. Measure the transparency (a decisive "not a
     # photograph" signal) and composite onto WHITE instead.
     transparent_fraction = 0.0
+    interior_transparent_fraction = 0.0
     has_alpha = (img.mode in ("RGBA", "LA", "PA")
                  or (img.mode == "P" and "transparency" in img.info))
     if has_alpha:
         rgba = img.convert("RGBA")
         alpha = np.asarray(rgba)[..., 3]
         transparent_fraction = float(np.mean(alpha < 128))
+        # WHERE the transparency sits decides what it means. A survey mosaic
+        # or an irregular crop is transparent only along the frame EDGE - its
+        # interior is solid sky. A cut-out or render carries transparency
+        # around the subject itself, i.e. in the middle of the frame. An ESO
+        # Milky Way mosaic (14% transparent, all of it at the stepped edges)
+        # was rejected as "a digital cut-out or render" while the neural gate
+        # scored it 1.00 astronomical.
+        h_a, w_a = alpha.shape
+        core = alpha[int(h_a * 0.2):int(h_a * 0.8),
+                     int(w_a * 0.2):int(w_a * 0.8)]
+        interior_transparent_fraction = float(np.mean(core < 128))
         white = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
         img = Image.alpha_composite(white, rgba)
 
@@ -156,6 +171,7 @@ def load_image(data: bytes, max_dim: int = 2400) -> ImageData:
         exif=exif,
         format=fmt,
         transparent_fraction=transparent_fraction,
+        interior_transparent_fraction=interior_transparent_fraction,
     )
 
 

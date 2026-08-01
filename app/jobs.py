@@ -409,9 +409,15 @@ def _run_pipeline(job_id: str, data: bytes,
                 feats["looks_astronomical"] = True
                 feats["plausibility_reasons"] = []
 
-        # transparency is decisive: real photographs never contain transparent
-        # pixels - this is a cut-out/render (e.g. "removebg" images)
-        if img.transparent_fraction > 0.005:
+        # transparency around the SUBJECT is decisive: real photographs never
+        # contain transparent pixels there - that is a cut-out/render (e.g.
+        # "removebg" images). Transparency only along the frame edge is a
+        # different thing entirely: survey mosaics and irregular crops are
+        # published that way. An ESO Milky Way mosaic (14% transparent, all
+        # of it at the stepped border, neural gate 1.00) was being thrown out
+        # as a render.
+        if (img.transparent_fraction > 0.005
+                and img.interior_transparent_fraction > 0.005):
             feats["looks_astronomical"] = False
             feats["plausibility_reasons"] = [
                 f"the image has a transparent background "
