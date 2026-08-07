@@ -971,6 +971,13 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
     _sky_sparse = (features.get("star_count", 0)
                    + features.get("faint_star_count", 0)) < 900
     _lunar_color = (_ssrc.get("rb_color_ratio") or 1.0) >= 0.85
+    # - DISK light profile: the Moon spreads its light across a surface, so
+    #   the profile stays flat (measured: 0.115 on a clean lunar frame, 0.281
+    #   on a hazy one). A point source concentrates light instead - an
+    #   overexposed bright star/planet with lens flare measured 0.506 and was
+    #   crowned "the Moon" even though every disk test said otherwise
+    #   (is_disk_like False, limb_sharpness 0.028).
+    _moon_profile_ok = (_ssrc.get("concentration") or 1.0) < 0.35
     # the streak arm needs the sparse-sky gate too: the Pillars of Creation
     # (7,078 point sources) reached this branch because its dust columns
     # measured as elongated "streaks", and came back as "the Moon". The
@@ -982,8 +989,8 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
     if (report["mode"] == "probabilistic" and _moon
             and ((_hz is not None and not _deep_field)
                  or (_ssrc.get("is_streak") and _sky_sparse)
-                 or (_moon_is_main and _moon_core_ok
-                     and _sky_sparse and _lunar_color))):
+                 or (_moon_is_main and _moon_core_ok and _sky_sparse
+                     and _lunar_color and _moon_profile_ok))):
         scene = ("over a night landscape (city lights below the horizon)"
                  if _hz is not None else "on the night sky")
         report["headline"] = ("Probabilistic analysis: the Moon "
@@ -1016,6 +1023,56 @@ def analyze(features: dict, solve: dict, catalog_matches: list[dict],
         report["summary"] = (
             f"The frame holds a resolved lunar disk {scene}. "
             "The sky region was analyzed separately from the landscape.")
+        return report
+
+    # ---- overexposed point source -------------------------------------------
+    # The classic phone shot of "that bright thing in the sky": a tiny
+    # saturated core wrapped in a flare halo on an otherwise empty frame.
+    # It is not a lunar disk (the light concentrates instead of spreading)
+    # and it is not a galaxy (which fills far more of the frame, does not
+    # clip, and sits in a field of other stars) - yet with both of those
+    # branches closed it was landing on "Galaxy". Appearance alone cannot say
+    # WHICH bright point it is, so the honest answer names the class and
+    # lists the candidates.
+    if (report["mode"] == "probabilistic" and _ssrc
+            and (_ssrc.get("fill_fraction") or 1.0) < 0.02
+            and (_ssrc.get("concentration") or 0.0) > 0.35
+            and (_ssrc.get("clipped_fraction") or 0.0) > 0.01
+            and (features.get("star_count", 0)
+                 + features.get("faint_star_count", 0)) < 50
+            and not _ssrc.get("is_disk_like")
+            and features.get("nightscape_horizon_y") is None):
+        _pk = _ssrc.get("concentration", 0)
+        report["headline"] = ("Probabilistic analysis: bright point source, "
+                              "heavily overexposed")
+        report["hypotheses"] = [
+            _hyp("Bright planet or star, overexposed", 62,
+                 [f"Light concentrates into a point rather than spreading over "
+                  f"a surface (concentration {_pk:.2f}) - a point source, not "
+                  "a resolved disk",
+                  f"The core is clipped to pure white over "
+                  f"{_ssrc.get('clipped_fraction', 0) * 100:.0f}% of its area - "
+                  "the sensor was saturated, which erases the true shape",
+                  "The surrounding sky is essentially empty, as expected when "
+                  "exposure is set for one very bright object"],
+                 ["Venus and Jupiter are the usual candidates for a lone "
+                  "brilliant point; the capture time and direction would "
+                  "settle it against the ephemeris.",
+                  "The horizontal streak is lens flare from the optics, not "
+                  "structure belonging to the object."]),
+            _hyp("Artificial light (aircraft, drone or distant lamp)", 38,
+                 ["A saturated point with flare looks identical whether the "
+                  "source is astronomical or man-made",
+                  "Aircraft and drones are distinguished by motion across "
+                  "frames, which a single photo cannot show"]),
+        ]
+        report["summary"] = (
+            "The frame holds a single, heavily overexposed point of light. "
+            "Saturation destroys the details that would separate a planet "
+            "from a bright star or a man-made light, so no specific "
+            "identification is claimed. Capture time and direction (or a "
+            "shorter exposure showing the object unsaturated) would settle it.")
+        _rank_hypotheses(report)
         return report
 
     # ---- comet by appearance -------------------------------------------------
