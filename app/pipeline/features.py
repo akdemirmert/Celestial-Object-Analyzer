@@ -1263,8 +1263,12 @@ def extract_features(rgb: np.ndarray, hi_rgb: np.ndarray | None = None) -> dict:
         # (NGC 1672 measured fill 0.86, rb 1.05, sat 0.04) carries REAL
         # interior sources; the strict regime exists for the Sun's hot glow
         # (rb 21-34, sat 0.95) and saturated nebula filaments
-        _sunlike_glow = (rb_ratio >= 3.0 or saturation >= 0.5
-                         or not is_extended_fuzzy)
+        # same edge test as the exclusion rule: a region running off the
+        # frame is a FIELD, not a close-up surface, so its interior points
+        # are real stars and must not face the strict regime
+        _sunlike_glow = ((rb_ratio >= 3.0 or saturation >= 0.5
+                          or not is_extended_fuzzy)
+                         and border_contact < 0.25)
         _dominant = (main_bright_mask is not None
                      and ext_mask is not None
                      and float(ext_mask.sum()) > 0.30 * w * h
@@ -1349,6 +1353,7 @@ def extract_features(rgb: np.ndarray, hi_rgb: np.ndarray | None = None) -> dict:
         # source means no dominant-close-up regime.
         rb_ratio, saturation, is_extended_fuzzy = 1.0, 0.0, False
         is_ringed_disk, qm, is_disk_like = False, None, False
+        border_contact = 0.0
         _stars_and_notables(None)
         return features
 
@@ -1609,6 +1614,14 @@ def extract_features(rgb: np.ndarray, hi_rgb: np.ndarray | None = None) -> dict:
             iterations=max(4, int(0.004 * max(w, h))))
     elif (is_disk_like
           or (area > 0.30 * w * h
+              # a frame-filling OBJECT floats clear of the frame edge (every
+              # planet/Sun/Moon case measures border_contact <= 0.23). A
+              # region that runs off the edges is a FIELD - nebulosity, a
+              # star cloud, a mosaic - whose interior is full of REAL
+              # sources. Without this gate an NGC 4485/4490 field (fill
+              # 0.81, border 0.65) had 81% of the frame excluded from star
+              # detection, so its thousands of stars were never marked.
+              and border_contact < 0.25
               and (rb_ratio >= 3.0 or saturation >= 0.5
                    or not is_extended_fuzzy))) and area > 400:
         # the "30%+" clause is for HOT/solid close-ups: any single object at
