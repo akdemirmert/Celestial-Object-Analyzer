@@ -3,7 +3,7 @@
 Upload **any** photo of the sky — a phone snap of a bright dot, an amateur telescope
 frame, or a JWST press image — and the app tells you what is in it, honestly.
 
-Known objects are pinned **exactly** via astrometric plate solving and then every
+Known objects are pinned **exactly** via astrometric plate solving and then ever
 detected source is named from live astronomical catalogs. When exact identification
 is impossible, the app says so and falls back to an evidence-linked probabilistic
 analysis — **it never invents a name**.
